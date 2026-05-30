@@ -607,10 +607,24 @@ impl LLMPreferences {
         // RequiresUpgrade models may become usable or unusable.
         // Also rebuild `custom_llms` so adds/edits/removals to the user's custom endpoints
         // immediately flow through to the model picker.
+        // Auto-select best free provider model when first BYOK provider is configured.
         ctx.subscribe_to_model(
             &ApiKeyManager::handle(ctx),
             |me, _event: &ApiKeyManagerEvent, ctx| {
+                let had_free_models = !me.custom_llms.is_empty();
                 me.rebuild_custom_llms(ctx);
+                // Auto-select if this is the first time free provider models are available
+                if !had_free_models && !me.custom_llms.is_empty() {
+                    if let Some(best) = me.best_free_provider_model() {
+                        AIExecutionProfilesModel::handle(ctx).update(ctx, |profiles, ctx| {
+                            for profile_id in profiles.get_all_profile_ids() {
+                                profiles.set_base_model(profile_id, Some(best.clone()), ctx);
+                                profiles.set_coding_model(profile_id, Some(best.clone()), ctx);
+                            }
+                        });
+                        log::info!("Auto-selected free provider model: {}", best);
+                    }
+                }
                 me.reconcile_disabled_model_preferences(ctx);
                 ctx.emit(LLMPreferencesEvent::UpdatedAvailableLLMs);
             },
@@ -855,6 +869,27 @@ impl LLMPreferences {
     /// edits, and removals all propagate immediately.
     fn rebuild_custom_llms(&mut self, app: &AppContext) {
         self.custom_llms = build_custom_llm_infos(ApiKeyManager::as_ref(app).keys());
+    }
+
+    /// Returns the "best" (flagship) model ID for a free BYOK provider, if available.
+    fn best_free_provider_model(&self) -> Option<LLMId> {
+        // Priority: Groq > NVIDIA > Ollama (based on model quality/availability)
+        self.custom_llms
+            .iter()
+            .find(|info| info.id.to_string() == "groq-llama-3-3-70b-versatile")
+            .map(|info| info.id.clone())
+            .or_else(|| {
+                self.custom_llms
+                    .iter()
+                    .find(|info| info.id.to_string() == "nvidia-llama-3-3-70b-versatile")
+                    .map(|info| info.id.clone())
+            })
+            .or_else(|| {
+                self.custom_llms
+                    .iter()
+                    .find(|info| info.id.to_string() == "ollama-llama3-3-70b")
+                    .map(|info| info.id.clone())
+            })
     }
 
     fn sanitize_disabled_custom_model_preferences(&mut self, ctx: &mut ModelContext<Self>) {
