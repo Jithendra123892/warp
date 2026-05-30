@@ -2672,6 +2672,7 @@ pub enum AISettingsPageAction {
     ToggleIncludeAgentCommandsInHistory,
     ToggleAgentAttribution,
     ToggleFeedbackBundledSkill,
+    ToggleOllama,
 
     // Custom inference
     OpenAddCustomEndpointModal,
@@ -3427,6 +3428,13 @@ impl TypedActionView for AISettingsPageView {
                     report_if_error!(settings
                         .feedback_bundled_skill_enabled
                         .toggle_and_save_value(ctx));
+                });
+                ctx.notify();
+            }
+            AISettingsPageAction::ToggleOllama => {
+                ApiKeyManager::handle(ctx).update(ctx, |model, ctx| {
+                    let current = model.keys().ollama_enabled.unwrap_or(false);
+                    model.set_ollama_enabled(Some(!current), ctx);
                 });
                 ctx.notify();
             }
@@ -6914,6 +6922,9 @@ struct ApiKeysWidget {
     openai_api_key_editor: ViewHandle<EditorView>,
     anthropic_api_key_editor: ViewHandle<EditorView>,
     google_api_key_editor: ViewHandle<EditorView>,
+    groq_api_key_editor: ViewHandle<EditorView>,
+    nvidia_nim_api_key_editor: ViewHandle<EditorView>,
+    ollama_enabled_toggle: SwitchStateHandle,
 
     can_use_warp_credits_for_fallback: SwitchStateHandle,
     upgrade_highlight_index: HighlightedHyperlink,
@@ -6934,6 +6945,9 @@ impl ApiKeysWidget {
             openai: openai_key,
             anthropic: anthropic_key,
             google: google_key,
+            groq: groq_key,
+            nvidia_nim: nvidia_nim_key,
+            ollama_enabled: _ollama_enabled_val,
             ..
         } = ApiKeyManager::as_ref(ctx).keys().clone();
 
@@ -7021,11 +7035,28 @@ impl ApiKeysWidget {
             set_google_key,
             "AIzaSy..."
         );
+        create_api_key_editor!(
+            groq_api_key_editor,
+            groq_key,
+            set_groq_key,
+            "gsk_..."
+        );
+        create_api_key_editor!(
+            nvidia_nim_api_key_editor,
+            nvidia_nim_key,
+            set_nvidia_nim_key,
+            "nvapi-..."
+        );
+
+        let ollama_enabled_toggle: SwitchStateHandle = Default::default();
 
         Self {
             openai_api_key_editor,
             anthropic_api_key_editor,
             google_api_key_editor,
+            groq_api_key_editor,
+            nvidia_nim_api_key_editor,
+            ollama_enabled_toggle,
 
             can_use_warp_credits_for_fallback: Default::default(),
             upgrade_highlight_index: Default::default(),
@@ -7100,6 +7131,27 @@ impl ApiKeysWidget {
             "Google API key",
             self.google_api_key_editor.clone(),
             is_enabled,
+            app,
+        ));
+        column.add_child(self.render_api_key_input(
+            appearance,
+            "Groq API key",
+            self.groq_api_key_editor.clone(),
+            is_enabled,
+            app,
+        ));
+        column.add_child(self.render_api_key_input(
+            appearance,
+            "NVIDIA NIM API key",
+            self.nvidia_nim_api_key_editor.clone(),
+            is_enabled,
+            app,
+        ));
+        column.add_child(render_ai_feature_switch(
+            self.ollama_enabled_toggle.clone(),
+            ApiKeyManager::as_ref(app).keys().ollama_enabled.unwrap_or(false),
+            is_enabled,
+            AISettingsPageAction::ToggleOllama,
             app,
         ));
         column.finish()

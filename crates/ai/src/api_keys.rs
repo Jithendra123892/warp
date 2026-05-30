@@ -24,6 +24,9 @@ pub struct ApiKeys {
     pub anthropic: Option<String>,
     pub openai: Option<String>,
     pub open_router: Option<String>,
+    pub groq: Option<String>,
+    pub nvidia_nim: Option<String>,
+    pub ollama_enabled: Option<bool>,
     pub custom_endpoints: Vec<CustomEndpoint>,
 }
 
@@ -64,10 +67,28 @@ impl ApiKeys {
             || self.anthropic.is_some()
             || self.google.is_some()
             || self.open_router.is_some()
+            || self.groq.is_some()
+            || self.nvidia_nim.is_some()
             || self
                 .custom_endpoints
                 .iter()
                 .any(|endpoint| !endpoint.api_key.trim().is_empty())
+    }
+
+    pub fn has_nvidia(&self) -> bool {
+        self.nvidia_nim.as_ref().is_some_and(|k| !k.trim().is_empty())
+    }
+
+    pub fn has_groq(&self) -> bool {
+        self.groq.as_ref().is_some_and(|k| !k.trim().is_empty())
+    }
+
+    pub fn nvidia_nim_key(&self) -> Option<&str> {
+        self.nvidia_nim.as_deref().filter(|k| !k.trim().is_empty())
+    }
+
+    pub fn groq_key(&self) -> Option<&str> {
+        self.groq.as_deref().filter(|k| !k.trim().is_empty())
     }
 
     /// Returns `true` when the user has at least one custom endpoint configured.
@@ -135,6 +156,24 @@ impl ApiKeyManager {
 
     pub fn set_open_router_key(&mut self, key: Option<String>, ctx: &mut ModelContext<Self>) {
         self.keys.open_router = key;
+        ctx.emit(ApiKeyManagerEvent::KeysUpdated);
+        self.write_keys_to_secure_storage(ctx);
+    }
+
+    pub fn set_groq_key(&mut self, key: Option<String>, ctx: &mut ModelContext<Self>) {
+        self.keys.groq = key;
+        ctx.emit(ApiKeyManagerEvent::KeysUpdated);
+        self.write_keys_to_secure_storage(ctx);
+    }
+
+    pub fn set_nvidia_nim_key(&mut self, key: Option<String>, ctx: &mut ModelContext<Self>) {
+        self.keys.nvidia_nim = key;
+        ctx.emit(ApiKeyManagerEvent::KeysUpdated);
+        self.write_keys_to_secure_storage(ctx);
+    }
+
+    pub fn set_ollama_enabled(&mut self, enabled: Option<bool>, ctx: &mut ModelContext<Self>) {
+        self.keys.ollama_enabled = enabled;
         ctx.emit(ApiKeyManagerEvent::KeysUpdated);
         self.write_keys_to_secure_storage(ctx);
     }
@@ -256,7 +295,7 @@ impl ApiKeyManager {
             return None;
         }
 
-        let providers: Vec<_> = self
+        let mut providers: Vec<_> = self
             .keys
             .custom_endpoints
             .iter()
@@ -281,11 +320,161 @@ impl ApiKeyManager {
             .filter(|provider| !provider.models.is_empty())
             .collect();
 
+        // Add Groq as custom model provider if user has Groq API key
+        if let Some(key) = self.keys.groq.as_ref() {
+            if !key.trim().is_empty() {
+                let models: Vec<_> = Self::groq_llm_models()
+                    .iter()
+                    .map(|(n, k)| api::request::settings::custom_model_providers::CustomModel {
+                        slug: (*n).to_string(),
+                        config_key: (*k).to_string(),
+                    })
+                    .collect();
+                if !models.is_empty() {
+                    providers.push(api::request::settings::custom_model_providers::CustomModelProvider {
+                        base_url: "https://api.groq.com/v1".to_string(),
+                        api_key: key.clone(),
+                        models,
+                    });
+                }
+            }
+        }
+
+        // Add NVIDIA NIM as custom model provider if user has NVIDIA API key
+        if let Some(key) = self.keys.nvidia_nim.as_ref() {
+            if !key.trim().is_empty() {
+                let models: Vec<_> = Self::nvidia_llm_models()
+                    .iter()
+                    .map(|(n, k)| api::request::settings::custom_model_providers::CustomModel {
+                        slug: (*n).to_string(),
+                        config_key: (*k).to_string(),
+                    })
+                    .collect();
+                if !models.is_empty() {
+                    providers.push(api::request::settings::custom_model_providers::CustomModelProvider {
+                        base_url: "https://integrate.api.nvidia.com/v1".to_string(),
+                        api_key: key.clone(),
+                        models,
+                    });
+                }
+            }
+        }
+
+        // Add Ollama as custom model provider if enabled
+        if self.keys.ollama_enabled.unwrap_or(false) {
+            let models: Vec<_> = Self::ollama_llm_models()
+                .iter()
+                .map(|(n, k)| api::request::settings::custom_model_providers::CustomModel {
+                    slug: (*n).to_string(),
+                    config_key: (*k).to_string(),
+                })
+                .collect();
+            if !models.is_empty() {
+                providers.push(api::request::settings::custom_model_providers::CustomModelProvider {
+                    base_url: "http://localhost:11434/v1".to_string(),
+                    api_key: "".to_string(),
+                    models,
+                });
+            }
+        }
+
         if providers.is_empty() {
             None
         } else {
             Some(api::request::settings::CustomModelProviders { providers })
         }
+    }
+
+    fn groq_llm_models() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("groq/llama-3.3-70b-versatile", "groq-llama-3-3-70b-versatile"),
+            ("groq/llama-3.1-70b-versatile", "groq-llama-3-1-70b-versatile"),
+            ("groq/llama-3.1-8b-instant", "groq-llama-3-1-8b-instant"),
+            ("groq/llama3-70b", "groq-llama3-70b"),
+            ("groq/llama3-8b", "groq-llama3-8b"),
+            ("groq/mixtral-8x7b", "groq-mixtral-8x7b"),
+            ("groq/gemma2-9b", "groq-gemma2-9b"),
+            ("groq/gemma-7b", "groq-gemma-7b"),
+        ]
+    }
+
+    fn nvidia_llm_models() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("nvidia/llama-3.3-70b-versatile", "nvidia-llama-3-3-70b-versatile"),
+            ("nvidia/llama-3.1-70b-instruct", "nvidia-llama-3-1-70b-instruct"),
+            ("nvidia/llama-3.1-8b-instruct", "nvidia-llama-3-1-8b-instruct"),
+            ("nvidia/llama-3-70b-instruct", "nvidia-llama-3-70b-instruct"),
+            ("nvidia/llama-3-8b-instruct", "nvidia-llama-3-8b-instruct"),
+            ("nvidia/mixtral-8x7b-v3", "nvidia-mixtral-8x7b-v3"),
+            ("nvidia/mixtral-8x7b-instruct", "nvidia-mixtral-8x7b-instruct"),
+            ("nvidia/mistral-large", "nvidia-mistral-large"),
+            ("nvidia/mistral-7b-instruct-v3", "nvidia-mistral-7b-instruct-v3"),
+            ("nvidia/nemotron-4-340b-instruct", "nvidia-nemotron-4-340b-instruct"),
+            ("nvidia/gemma2-27b-it", "nvidia-gemma2-27b-it"),
+            ("nvidia/gemma2-9b-it", "nvidia-gemma2-9b-it"),
+            ("nvidia/gemma-7b-it", "nvidia-gemma-7b"),
+            ("nvidia/deepseek-r1-distill-llama-70b", "nvidia-deepseek-r1-distill-llama-70b"),
+            ("nvidia/deepseek-r1-distill-llama-8b", "nvidia-deepseek-r1-distill-llama-8b"),
+            ("nvidia/qwen2.5-72b-instruct", "nvidia-qwen2-5-72b-instruct"),
+            ("nvidia/qwen2.5-32b-instruct", "nvidia-qwen2-5-32b-instruct"),
+            ("nvidia/qwen2.5-14b-instruct", "nvidia-qwen2-5-14b-instruct"),
+            ("nvidia/qwen2.5-7b-instruct", "nvidia-qwen2-5-7b-instruct"),
+            ("nvidia/phi-4-mini-instruct", "nvidia-phi-4-mini-instruct"),
+            ("nvidia/phi-3.5-mini-instruct", "nvidia-phi-3-5-mini-instruct"),
+        ]
+    }
+
+    fn ollama_llm_models() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("llama3.3:70b", "ollama-llama3-3-70b"),
+            ("llama3.1:70b", "ollama-llama3-1-70b"),
+            ("llama3.1:8b", "ollama-llama3-1-8b"),
+            ("llama3.1:latest", "ollama-llama3-1-latest"),
+            ("llama3:70b", "ollama-llama3-70b"),
+            ("llama3:8b", "ollama-llama3-8b"),
+            ("llama2:70b", "ollama-llama2-70b"),
+            ("llama2:13b", "ollama-llama2-13b"),
+            ("mixtral:8x22b", "ollama-mixtral-8x22b"),
+            ("mixtral:8x7b", "ollama-mixtral-8x7b"),
+            ("mistral:latest", "ollama-mistral-latest"),
+            ("mistral:7b", "ollama-mistral-7b"),
+            ("gemma3:27b", "ollama-gemma3-27b"),
+            ("gemma3:12b", "ollama-gemma3-12b"),
+            ("gemma2:27b", "ollama-gemma2-27b"),
+            ("gemma2:12b", "ollama-gemma2-12b"),
+            ("gemma2:9b", "ollama-gemma2-9b"),
+            ("gemma:7b", "ollama-gemma-7b"),
+            ("qwen2.5:72b", "ollama-qwen2-5-72b"),
+            ("qwen2.5:32b", "ollama-qwen2-5-32b"),
+            ("qwen2.5:14b", "ollama-qwen2-5-14b"),
+            ("qwen2.5:7b", "ollama-qwen2-5-7b"),
+            ("qwen2.5:3b", "ollama-qwen2-5-3b"),
+            ("qwen2.5:1.5b", "ollama-qwen2-5-1-5b"),
+            ("deepseek-r1:70b", "ollama-deepseek-r1-70b"),
+            ("deepseek-r1:32b", "ollama-deepseek-r1-32b"),
+            ("deepseek-r1:14b", "ollama-deepseek-r1-14b"),
+            ("deepseek-r1:8b", "ollama-deepseek-r1-8b"),
+            ("deepseek-r1:1.5b", "ollama-deepseek-r1-1-5b"),
+            ("phi4:14b", "ollama-phi4-14b"),
+            ("phi4-mini:3.8b", "ollama-phi4-mini-3-8b"),
+            ("phi3.5:latest", "ollama-phi3-5-latest"),
+            ("nemotron:70b", "ollama-nemotron-70b"),
+            ("wizardlm2:70b", "ollama-wizardlm2-70b"),
+            ("wizardlm2:8x22b", "ollama-wizardlm2-8x22b"),
+            ("codellama:70b", "ollama-codellama-70b"),
+            ("codellama:13b", "ollama-codellama-13b"),
+            ("codellama:7b", "ollama-codellama-7b"),
+            ("codegemma:22b", "ollama-codegemma-22b"),
+            ("codegemma:7b", "ollama-codegemma-7b"),
+            ("llava:13b", "ollama-llava-13b"),
+            ("llava:7b", "ollama-llava-7b"),
+            ("llava-llama3:8b", "ollama-llava-llama3-8b"),
+            ("granite:8b", "ollama-granite-8b"),
+            ("granite:20b", "ollama-granite-20b"),
+            ("hermes3:70b", "ollama-hermes3-70b"),
+            ("command-r7b", "ollama-command-r7b"),
+            ("command-r35b", "ollama-command-r35b"),
+        ]
     }
 
     pub fn api_keys_for_request(

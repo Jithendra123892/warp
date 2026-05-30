@@ -37,6 +37,9 @@ pub fn is_using_api_key_for_provider(provider: &LLMProvider, app: &AppContext) -
         LLMProvider::OpenAI => api_keys.is_some_and(|keys| keys.openai.is_some()),
         LLMProvider::Anthropic => api_keys.is_some_and(|keys| keys.anthropic.is_some()),
         LLMProvider::Google => api_keys.is_some_and(|keys| keys.google.is_some()),
+        LLMProvider::Groq => api_keys.is_some_and(|keys| keys.groq.is_some()),
+        LLMProvider::NvidiaNIM => api_keys.is_some_and(|keys| keys.nvidia_nim.is_some()),
+        LLMProvider::Ollama => api_keys.is_some_and(|keys| keys.ollama_enabled.unwrap_or(false)),
         _ => false,
     }
 }
@@ -107,6 +110,9 @@ pub enum LLMProvider {
     Anthropic,
     Google,
     Xai,
+    Groq,
+    NvidiaNIM,
+    Ollama,
     Unknown,
 }
 
@@ -118,6 +124,9 @@ impl LLMProvider {
             LLMProvider::Anthropic => Some(Icon::ClaudeLogo),
             LLMProvider::Google => Some(Icon::GeminiLogo),
             LLMProvider::Xai => None,
+            LLMProvider::Groq => Some(Icon::Key),
+            LLMProvider::NvidiaNIM => Some(Icon::Key),
+            LLMProvider::Ollama => Some(Icon::Key),
             LLMProvider::Unknown => None,
         }
     }
@@ -1286,6 +1295,137 @@ fn get_new_agent_mode_choices(
         .collect()
 }
 
+/// Well-known models for Groq provider
+/// Well-known models for Groq provider
+fn groq_models() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("groq/llama-3.3-70b-versatile", "groq-llama-3-3-70b-versatile"),
+        ("groq/llama-3.1-70b-versatile", "groq-llama-3-1-70b-versatile"),
+        ("groq/llama-3.1-8b-instant", "groq-llama-3-1-8b-instant"),
+        ("groq/llama3-70b", "groq-llama3-70b"),
+        ("groq/llama3-8b", "groq-llama3-8b"),
+        ("groq/mixtral-8x7b", "groq-mixtral-8x7b"),
+        ("groq/gemma2-9b", "groq-gemma2-9b"),
+        ("groq/gemma-7b", "groq-gemma-7b"),
+    ]
+}
+
+/// Well-known models for NVIDIA NIM provider
+fn nvidia_nim_models() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("nvidia/llama-3.3-70b-versatile", "nvidia-llama-3-3-70b-versatile"),
+        ("nvidia/llama-3.1-70b-instruct", "nvidia-llama-3-1-70b-instruct"),
+        ("nvidia/llama-3.1-8b-instruct", "nvidia-llama-3-1-8b-instruct"),
+        ("nvidia/llama-3-70b-instruct", "nvidia-llama-3-70b-instruct"),
+        ("nvidia/llama-3-8b-instruct", "nvidia-llama-3-8b-instruct"),
+        ("nvidia/mixtral-8x7b-v3", "nvidia-mixtral-8x7b-v3"),
+        ("nvidia/mixtral-8x7b-instruct", "nvidia-mixtral-8x7b-instruct"),
+        ("nvidia/mistral-large", "nvidia-mistral-large"),
+        ("nvidia/mistral-7b-instruct-v3", "nvidia-mistral-7b-instruct-v3"),
+        ("nvidia/nemotron-4-340b-instruct", "nvidia-nemotron-4-340b-instruct"),
+        ("nvidia/gemma2-27b-it", "nvidia-gemma2-27b-it"),
+        ("nvidia/gemma2-9b-it", "nvidia-gemma2-9b-it"),
+        ("nvidia/gemma-7b-it", "nvidia-gemma-7b"),
+        ("nvidia/deepseek-r1-distill-llama-70b", "nvidia-deepseek-r1-distill-llama-70b"),
+        ("nvidia/deepseek-r1-distill-llama-8b", "nvidia-deepseek-r1-distill-llama-8b"),
+        ("nvidia/qwen2.5-72b-instruct", "nvidia-qwen2-5-72b-instruct"),
+        ("nvidia/qwen2.5-32b-instruct", "nvidia-qwen2-5-32b-instruct"),
+        ("nvidia/qwen2.5-14b-instruct", "nvidia-qwen2-5-14b-instruct"),
+        ("nvidia/qwen2.5-7b-instruct", "nvidia-qwen2-5-7b-instruct"),
+        ("nvidia/phi-4-mini-instruct", "nvidia-phi-4-mini-instruct"),
+        ("nvidia/phi-3.5-mini-instruct", "nvidia-phi-3-5-mini-instruct"),
+    ]
+}
+
+/// Well-known models for Ollama provider
+fn ollama_models() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("llama3.3:70b", "ollama-llama3-3-70b"),
+        ("llama3.1:70b", "ollama-llama3-1-70b"),
+        ("llama3.1:8b", "ollama-llama3-1-8b"),
+        ("llama3.1:latest", "ollama-llama3-1-latest"),
+        ("llama3:70b", "ollama-llama3-70b"),
+        ("llama3:8b", "ollama-llama3-8b"),
+        ("llama2:70b", "ollama-llama2-70b"),
+        ("llama2:13b", "ollama-llama2-13b"),
+        ("mixtral:8x22b", "ollama-mixtral-8x22b"),
+        ("mixtral:8x7b", "ollama-mixtral-8x7b"),
+        ("mistral:latest", "ollama-mistral-latest"),
+        ("mistral:7b", "ollama-mistral-7b"),
+        ("gemma3:27b", "ollama-gemma3-27b"),
+        ("gemma3:12b", "ollama-gemma3-12b"),
+        ("gemma2:27b", "ollama-gemma2-27b"),
+        ("gemma2:12b", "ollama-gemma2-12b"),
+        ("gemma2:9b", "ollama-gemma2-9b"),
+        ("gemma:7b", "ollama-gemma-7b"),
+        ("qwen2.5:72b", "ollama-qwen2-5-72b"),
+        ("qwen2.5:32b", "ollama-qwen2-5-32b"),
+        ("qwen2.5:14b", "ollama-qwen2-5-14b"),
+        ("qwen2.5:7b", "ollama-qwen2-5-7b"),
+        ("qwen2.5:3b", "ollama-qwen2-5-3b"),
+        ("qwen2.5:1.5b", "ollama-qwen2-5-1-5b"),
+        ("deepseek-r1:70b", "ollama-deepseek-r1-70b"),
+        ("deepseek-r1:32b", "ollama-deepseek-r1-32b"),
+        ("deepseek-r1:14b", "ollama-deepseek-r1-14b"),
+        ("deepseek-r1:8b", "ollama-deepseek-r1-8b"),
+        ("deepseek-r1:1.5b", "ollama-deepseek-r1-1-5b"),
+        ("phi4:14b", "ollama-phi4-14b"),
+        ("phi4-mini:3.8b", "ollama-phi4-mini-3-8b"),
+        ("phi3.5:latest", "ollama-phi3-5-latest"),
+        ("nemotron:70b", "ollama-nemotron-70b"),
+        ("wizardlm2:70b", "ollama-wizardlm2-70b"),
+        ("wizardlm2:8x22b", "ollama-wizardlm2-8x22b"),
+        ("codellama:70b", "ollama-codellama-70b"),
+        ("codellama:13b", "ollama-codellama-13b"),
+        ("codellama:7b", "ollama-codellama-7b"),
+        ("codegemma:22b", "ollama-codegemma-22b"),
+        ("codegemma:7b", "ollama-codegemma-7b"),
+        ("llava:13b", "ollama-llava-13b"),
+        ("llava:7b", "ollama-llava-7b"),
+        ("llava-llama3:8b", "ollama-llava-llama3-8b"),
+        ("granite:8b", "ollama-granite-8b"),
+        ("granite:20b", "ollama-granite-20b"),
+        ("hermes3:70b", "ollama-hermes3-70b"),
+        ("command-r7b", "ollama-command-r7b"),
+        ("command-r35b", "ollama-command-r35b"),
+    ]
+}
+
+/// Helper to get provider display name
+fn provider_name_for_byok(provider: &LLMProvider) -> &'static str {
+    match provider {
+        LLMProvider::Groq => "Groq",
+        LLMProvider::NvidiaNIM => "NVIDIA NIM",
+        LLMProvider::Ollama => "Ollama",
+        _ => "Custom",
+    }
+}
+
+/// Helper to create LLMInfo for BYOK providers (Groq, NVIDIA, Ollama)
+fn byok_llm_info(provider: LLMProvider, display_name: &'static str, id: &'static str) -> LLMInfo {
+    LLMInfo {
+        display_name: display_name.to_string(),
+        base_model_name: display_name.to_string(),
+        id: id.to_string().into(),
+        reasoning_level: None,
+        usage_metadata: LLMUsageMetadata {
+            request_multiplier: 1,
+            credit_multiplier: None,
+        },
+        description: Some(format!(
+            "BYO · {}",
+            provider_name_for_byok(&provider)
+        )),
+        disable_reason: None,
+        vision_supported: true,
+        spec: None,
+        provider: provider.clone(),
+        host_configs: HashMap::new(),
+        discount_percentage: None,
+        context_window: LLMContextWindow::default(),
+    }
+}
+
 /// Builds synthetic [`LLMInfo`]s from the user's persisted custom endpoints.
 ///
 /// One entry per `CustomEndpointModel`. The display label is the **alias** when present,
@@ -1297,17 +1437,50 @@ fn get_new_agent_mode_choices(
 /// Endpoints with empty URL or API key, and models with empty name or config_key, are
 /// skipped — they shouldn't surface in the picker until the user finishes configuring them.
 fn build_custom_llm_infos(keys: &ai::api_keys::ApiKeys) -> Vec<LLMInfo> {
-    keys.custom_endpoints
-        .iter()
-        .filter(|ep| !ep.url.trim().is_empty() && !ep.api_key.is_empty())
-        .flat_map(|endpoint| {
-            endpoint
-                .models
-                .iter()
-                .filter(|m| !m.name.trim().is_empty() && !m.config_key.is_empty())
-                .map(move |model| custom_llm_info_from(endpoint, model))
-        })
-        .collect()
+    let mut models = Vec::new();
+
+    // Add custom endpoint models
+    models.extend(
+        keys.custom_endpoints
+            .iter()
+            .filter(|ep| !ep.url.trim().is_empty() && !ep.api_key.is_empty())
+            .flat_map(|endpoint| {
+                endpoint
+                    .models
+                    .iter()
+                    .filter(|m| !m.name.trim().is_empty() && !m.config_key.is_empty())
+                    .map(move |model| custom_llm_info_from(endpoint, model))
+            }),
+    );
+
+    // Add Groq models when user has Groq API key
+    if keys.groq.as_ref().is_some_and(|k| !k.trim().is_empty()) {
+        models.extend(
+            groq_models()
+                .into_iter()
+                .map(|(name, id)| byok_llm_info(LLMProvider::Groq, name, id)),
+        );
+    }
+
+    // Add NVIDIA NIM models when user has NVIDIA API key
+    if keys.nvidia_nim.as_ref().is_some_and(|k| !k.trim().is_empty()) {
+        models.extend(
+            nvidia_nim_models()
+                .into_iter()
+                .map(|(name, id)| byok_llm_info(LLMProvider::NvidiaNIM, name, id)),
+        );
+    }
+
+    // Add Ollama models when user has Ollama enabled
+    if keys.ollama_enabled.unwrap_or(false) {
+        models.extend(
+            ollama_models()
+                .into_iter()
+                .map(|(name, id)| byok_llm_info(LLMProvider::Ollama, name, id)),
+        );
+    }
+
+    models
 }
 
 fn custom_llm_info_from(endpoint: &CustomEndpoint, model: &CustomEndpointModel) -> LLMInfo {
