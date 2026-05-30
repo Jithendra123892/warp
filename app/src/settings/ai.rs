@@ -1554,13 +1554,15 @@ impl AISettings {
     }
 
     pub fn is_any_ai_enabled(&self, app: &AppContext) -> bool {
-        // Disable AI for anonymous and logged-out users.
+        // Allow BYO API key users (even anonymous) to use AI features for free,
+        // since they pay directly to their provider and don't consume Warp credits.
         let is_anonymous_or_logged_out = AuthStateProvider::as_ref(app)
             .get()
             .is_anonymous_or_logged_out();
+        let has_byo_keys = UserWorkspaces::as_ref(app).is_byo_api_key_enabled(app);
 
         *self.is_any_ai_enabled
-            && !is_anonymous_or_logged_out
+            && (!is_anonymous_or_logged_out || has_byo_keys)
             && !self.is_ai_disabled_due_to_remote_session_org_policy(app)
     }
 

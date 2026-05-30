@@ -59,7 +59,7 @@ pub fn load_config_from_generator(channel: &str) -> ChannelConfig {
         "linux"
     };
 
-    let output = command::blocking::Command::new(CONFIG_BIN_NAME)
+    let output = match command::blocking::Command::new(CONFIG_BIN_NAME)
         .arg("--channel")
         .arg(channel)
         .arg("--target-family")
@@ -67,17 +67,34 @@ pub fn load_config_from_generator(channel: &str) -> ChannelConfig {
         .arg("--target-os")
         .arg(target_os)
         .output()
-        .unwrap_or_else(|err| {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                panic!(
-                    "\n\n'{CONFIG_BIN_NAME}' was not found on PATH.\n\n\
-                     To build internal channels, run:\n\
-                     \n\
-                     \x20 ./script/install_channel_config\n\n"
-                )
-            }
-            panic!("Failed to execute '{CONFIG_BIN_NAME}': {err}")
-        });
+    {
+        Ok(output) => output,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            eprintln!(
+                "'{}' not found on PATH. Using embedded dev config fallback.",
+                CONFIG_BIN_NAME
+            );
+            return load_config_from_embedded(r#"{
+                "app_id": "dev.warp.WarpDev",
+                "logfile_name": "warp-dev.log",
+                "server_config": {
+                    "firebase_auth_api_key": "",
+                    "server_root_url": "https://api.warp.dev",
+                    "rtc_server_url": "wss://warp.dev/graphql",
+                    "session_sharing_server_url": null
+                },
+                "oz_config": {
+                    "oz_root_url": "https://api.warp.dev",
+                    "workload_audience_url": null
+                },
+                "telemetry_config":null,
+                "crash_reporting_config":null,
+                "autoupdate_config":null,
+                "mcp_static_config":null
+            }"#);
+        }
+        Err(err) => panic!("Failed to execute '{}': {}", CONFIG_BIN_NAME, err),
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -255,8 +255,7 @@ fn init_subshell_script_for_shell(
         ShellType::Fish => {
             load_and_escape_script("bundled/bootstrap/fish_init_subshell.sh", assets)
         }
-        // TODO(PLAT-750)
-        ShellType::PowerShell => todo!(),
+        ShellType::PowerShell => load_script("bundled/bootstrap/pwsh_init_subshell.ps1", assets),
     };
 
     // Combine the environment setup script with the shell-specific init script

@@ -491,7 +491,8 @@ impl<T: EventLoopSender> PtyController<T> {
             ShellType::PowerShell => {
                 let path_str = String::from_utf8_lossy(&path_to_script);
                 let escaped = ShellFamily::PowerShell.escape(&path_str).into_owned();
-                self.write_bytes(b" . ", ctx);
+                // Bypass execution policy for this session so dot-sourced scripts aren't blocked.
+                self.write_bytes(b"Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass; . ", ctx);
                 self.write_bytes(escaped.into_bytes(), ctx);
             }
             _ => {

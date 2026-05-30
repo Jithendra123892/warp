@@ -7,11 +7,11 @@ use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Console::{COORD, HPCON};
 use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 
-const CREATE_PSUEDOCONSOLE_FN_NAME: &str = "CreatePsuedoConsole";
-const RESIZE_PSUEDOCONSOLE_FN_NAME: &str = "ResizePsuedoConsole";
-const CLOSE_PSUEDOCONSOLE_FN_NAME: &str = "ClosePsuedoConsole";
-const SHOW_HIDE_PSUEDOCONSOLE_FN_NAME: &str = "ShowHidePseudoConsole";
-const RELEASE_PSUEDOCONSOLE_FN_NAME: &str = "ReleasePseudoConsole";
+const CREATE_PSUEDOCONSOLE_FN_NAME: &str = "CreatePseudoConsole";
+const RESIZE_PSUEDOCONSOLE_FN_NAME: &str = "ResizePseudoConsole";
+const CLOSE_PSUEDOCONSOLE_FN_NAME: &str = "ClosePseudoConsole";
+const SHOW_HIDE_PSUEDOCONSOLE_FN_NAME: &str = "ConptyShowHidePseudoConsole";
+const RELEASE_PSUEDOCONSOLE_FN_NAME: &str = "ConptyReleasePseudoConsole";
 
 type CreatePseudoConsoleFn =
     unsafe extern "system" fn(COORD, HANDLE, HANDLE, u32, *mut HPCON) -> HRESULT;

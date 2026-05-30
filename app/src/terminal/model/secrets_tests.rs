@@ -104,7 +104,7 @@ fn test_mac_address() {
 fn test_aws_access_id() {
     let amazon_credentials = r#"{
         "Credentials": {
-            "AccessKeyId": "ASIAZRUF5DH7SYC4A3NF",
+            "AccessKeyId": "AKIAFAKE000000000000000",
         }
       }"#;
     assert_regex_match_found(regexes::AWS_ACCESS_ID, amazon_credentials);
