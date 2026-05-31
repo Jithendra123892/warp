@@ -291,34 +291,35 @@ impl ApiKeyManager {
         &self,
         include_custom_models: bool,
     ) -> Option<api::request::settings::CustomModelProviders> {
-        if !include_custom_models {
-            return None;
-        }
+        let mut providers: Vec<_> = Vec::new();
 
-        let mut providers: Vec<_> = self
-            .keys
-            .custom_endpoints
-            .iter()
-            .filter(|endpoint| !endpoint.url.trim().is_empty() && !endpoint.api_key.is_empty())
-            .map(
-                |endpoint| api::request::settings::custom_model_providers::CustomModelProvider {
-                    base_url: endpoint.url.clone(),
-                    api_key: endpoint.api_key.clone(),
-                    models: endpoint
-                        .models
-                        .iter()
-                        .filter(|m| !m.name.trim().is_empty() && !m.config_key.is_empty())
-                        .map(
-                            |m| api::request::settings::custom_model_providers::CustomModel {
-                                slug: m.name.clone(),
-                                config_key: m.config_key.clone(),
-                            },
-                        )
-                        .collect(),
-                },
-            )
-            .filter(|provider| !provider.models.is_empty())
-            .collect();
+        // User-defined custom endpoints — gated by include_custom_models flag
+        if include_custom_models {
+            providers.extend(
+                self.keys
+                    .custom_endpoints
+                    .iter()
+                    .filter(|endpoint| !endpoint.url.trim().is_empty() && !endpoint.api_key.is_empty())
+                    .map(
+                        |endpoint| api::request::settings::custom_model_providers::CustomModelProvider {
+                            base_url: endpoint.url.clone(),
+                            api_key: endpoint.api_key.clone(),
+                            models: endpoint
+                                .models
+                                .iter()
+                                .filter(|m| !m.name.trim().is_empty() && !m.config_key.is_empty())
+                                .map(
+                                    |m| api::request::settings::custom_model_providers::CustomModel {
+                                        slug: m.name.clone(),
+                                        config_key: m.config_key.clone(),
+                                    },
+                                )
+                                .collect(),
+                        },
+                    )
+                    .filter(|provider| !provider.models.is_empty()),
+            );
+        }
 
         // Add Groq as custom model provider if user has Groq API key
         if let Some(key) = self.keys.groq.as_ref() {
